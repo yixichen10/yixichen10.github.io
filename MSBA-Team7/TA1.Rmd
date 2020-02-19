@@ -1,0 +1,159 @@
+---
+title: "Mid-Term Review Session"
+author: "Team 7 - Yixi Chen, Kelby Williamson, Carlos Garrido, Scott Mundy"
+date: "2/26/2020"
+output: rmdformats::readthedown
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Chapter 6, Exercise 10
+
+# Chapter 7, Exercise 11
+
+# Chapter 8, Exercise 11
+
+This question uses the `Caravan` data set.
+Let's first take a look at the data set.
+```{r, message=FALSE}
+require(ISLR)
+dim(Caravan)
+```
+
+```{r eval=FALSE}
+?Caravan
+```
+
+```
+**Description**
+The data contains 5822 real customer records. Each record consists of 86 variables, containing sociodemographic data (variables 1-43) and product ownership (variables 44-86). The sociodemographic data is derived from zip codes. All customers living in areas with the same zip code have the same sociodemographic attributes. 
+Variable 86 (Purchase) indicates whether the customer purchased a caravan insurance policy.
+```
+<br>
+
+## Question (a)
+##### Create a training set consisting of the first 1,000 observations, and a test set consisting of the remaining observations.
+
+```{r}
+# Split Caravan into training and test sets
+training <- Caravan[1:1000,]
+test <- Caravan[1001:nrow(Caravan),]
+
+# Check the split
+dim(training)
+dim(test)
+```
+<br>
+
+## Question (b)
+##### Fit a boosting model to the training set with `Purchase` as the response and the other variables as predictors. Use 1,000 trees, and a shrinkage value of 0.01. Which predictors appear to be the most important?
+
+```{r, warning=FALSE, message=FALSE}
+# Display the values of training$Purchase
+levels(training$Purchase)
+
+# Encode the string values of Purchase to 0/1
+training$Purchase <- ifelse(training$Purchase=="Yes",1,0)
+
+# Fit a boosting model using gbm()
+require(gbm)
+set.seed(342)
+boost.caravan <- gbm(Purchase~., data = training, n.trees = 1000, shrinkage = 0.01,
+                     distribution = 'bernoulli')
+```
+**Key takeaways:**<br>
+1. String values of the response variable should be converted to numerical in order to be passed to `gbm()`, otherwise there would be an error message: `Bernoulli requires the response to be in {0,1}`;<br>
+2. `distribution = 'bernoulli'` must be specified to indicate a classification problem with a binary `y`;<br>
+3. `as.factor()` should **NOT** be applied to `training$Purchase` after converting it to a 0/1 binary variable. Otherwise `gbm()` can work without error messages but return `NaN` values for feature importances.
+
+
+To display the top 5 important features, we can slice the `summary(boost.caravan)` as we do to a Data Frame.
+```{r}
+# plotit = FALSE can mute the plot of all features' importances
+summary(boost.caravan,plotit = FALSE)[1:5,]
+```
+<br>
+
+## Question (c)
+##### Use the boosting model to predict the response on the test data. Predict that a person will make a purchase if the estimated probability of purchase is greater than 20%. Form a confusion matrix. What fraction of the people predicted to make a purchase do in fact make one? How does this compare with the results obtained from applying KNN or logistic regression to this data set?.
+
+###### **c-1 Boosting** <br>
+```{r}
+# Make predictions of probabilities: seems that newdata does not require a 0/1 binary response variable
+pred_probs <- predict(object = boost.caravan, newdata = test, n.trees = 1000, type = 'response')
+
+# Convert to predictions of labels using a threshold of 20%
+pred_labels <- ifelse(pred_probs>0.2,"Yes","No")
+
+# Form a confusion matrix
+table(ActualValues=test$Purchase, Predictions=pred_labels)
+```
+**Key takeaways:**<br>
+1. `n.trees` must be specified when using `predict` on a `gbm` object;<br>
+2. To make predictions of probabilities, specify the argument `type = 'response'`; By default `predict` would return values on the log odds scale for `distribution = 'bernoulli'`;<br>
+3. Machine Learning 1 legacy: always put **actual** values **first** in the `table` function, which will appear as **row labels** later in the confusion matrix and specify names of rows and columns to make it clear.
+
+```{r}
+# Fraction of the people predicted to make a purchase do in fact make one -> What's the name of this value?
+34/(137+34)
+```
+<br>
+
+###### **c-2 KNN** <br>
+Now we fit a KNN model and compare its result to the boosting model.
+```{r, message=FALSE}
+require(class)
+# Scale the data set by excluding the last Purchase column
+scale.x <- as.data.frame(scale(Caravan[1:ncol(Caravan)-1]))
+training.scale.x <- scale.x[1:1000,]
+test.scale.x <- scale.x[1001:nrow(Caravan),]
+
+# Use the square root of training sample size as # of nearest neighbours in KNN
+(k <- round(sqrt(nrow(training))))
+
+# Fit a KNN model and make predictions
+knn.caravan <- knn(train = training.scale.x, test = test.scale.x, 
+                   cl=training$Purchase, k = k, prob = TRUE)
+## Extract the proportions of the votes for the winning class for each prediction
+knn.winning.prop <- attributes(knn.caravan)$prob
+## Convert the proportions to probabilities of predicting 1
+knn.probs <- ifelse(knn.caravan==1,knn.winning.prop,1-knn.winning.prop)
+## Convert to predictions of labels using a threshold of 20%
+knn.labels <- ifelse(knn.probs>0.2,"Yes","No")
+
+# Form a confusion matrix
+table(ActualValues=test$Purchase, Predictions=knn.labels)
+```
+**Key takeaways:**<br>
+1. Before fitting a KNN model, **scaling** must be done on the independent variables of the **whole** data set;<br>
+2. `knn()` will return the predicted labels directly. If specifying the argument `prob = TRUE`, the **proportion of the votes for the winning class** are returned as attribute `prob`. Still, this needs to be converted to the probability of predicting `1` or `Yes`;<br>
+
+Calculate the precision of the KNN model.
+```{r}
+17/(17+68)
+```
+The boosting model performs slightly better in terms of model precision.<br>
+
+
+###### **c-3 Logistic Regression** <br>
+Finally, fit a logistic regression model.
+```{r, warning=FALSE}
+# Convert the Purchase to a factor variable
+training$Purchase <- as.factor(training$Purchase)
+
+# Fit a logistic regression model
+glm.caravan <- glm(Purchase~., data = training, family = 'binomial')
+
+# Make predictions
+glm.probs <- predict(glm.caravan,newdata = test,type = 'response')
+glm.labels <- ifelse(glm.probs>0.2,"Yes","No")
+
+# Form a confusion matrix
+table(ActualValues=test$Purchase, Predictions=glm.labels)
+```
+Calculate the precision of the KNN model.
+```{r}
+58/(58+350)
+```
+Logistic regression performs much worse compared to Boosting and KNN in terms of precision.
