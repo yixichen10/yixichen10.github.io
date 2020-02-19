@@ -1,3 +1,0 @@
-# MSBA Team 7 Group Work
-
-[Machine Learning II](/MSBA-Team7/Chpt8Exe11.html)
