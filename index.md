@@ -6,4 +6,4 @@ description: Test Description
 
 # MSBA Team 7 Group Work
 
-[Machine Learning II](/MSBA-Team7/index.md)
+[Machine Learning II](/MSBA-Team7/Chpt8Exe11.Rmd)
